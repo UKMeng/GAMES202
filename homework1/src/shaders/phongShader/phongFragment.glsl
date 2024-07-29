@@ -15,7 +15,7 @@ varying highp vec3 vFragPos;
 varying highp vec3 vNormal;
 
 // Shadow map related variables
-#define NUM_SAMPLES 20
+#define NUM_SAMPLES 50
 #define BLOCKER_SEARCH_NUM_SAMPLES NUM_SAMPLES
 #define PCF_NUM_SAMPLES NUM_SAMPLES
 #define NUM_RINGS 10
@@ -83,24 +83,72 @@ void uniformDiskSamples( const in vec2 randomSeed ) {
   }
 }
 
-float findBlocker( sampler2D shadowMap,  vec2 uv, float zReceiver ) {
-	return 1.0;
+float PCF(sampler2D shadowMap, vec4 coords) {
+    //uniformDiskSamples(coords.xy);
+    poissonDiskSamples(coords.xy);
+    float visibility = 0.0;
+    float currentDepth = coords.z;
+
+    float filterSize = 10.0 / 2048.0;
+
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        vec2 offset = poissonDisk[i] * filterSize;
+        float closestDepth = unpack(texture2D(shadowMap, coords.xy + offset));
+        visibility += currentDepth > closestDepth + EPS ? 0.0 : 1.0;
+    }
+
+    return visibility / float(NUM_SAMPLES);
 }
 
-float PCF(sampler2D shadowMap, vec4 coords) {
-  return 1.0;
+// transform light from world size to sm size
+// reference: https://github.com/DrFlower/GAMES_101_202_Homework/tree/main/Homework_202/Assignment1
+#define FRUSTUM_SIZE 128.0
+#define LIGHT_WORLD_SIZE 10.0
+#define LIGHT_UV LIGHT_WORLD_SIZE / FRUSTUM_SIZE
+
+float findBlocker( sampler2D shadowMap, vec2 uv, float zReceiver ) {
+    float filterSize = 10.0 / 2048.0;
+    float blockerDepthSum = 0.0;
+    float numBlockers = 0.0;
+
+    for (int i = 0; i < NUM_SAMPLES; i++)
+    {
+        vec2 offset = poissonDisk[i] * filterSize;
+        float closestDepth = unpack(texture2D(shadowMap, uv + offset));
+        if (closestDepth < zReceiver) {
+            blockerDepthSum += closestDepth;
+            numBlockers += 1.0;
+        }
+    }
+
+    if (numBlockers == 0.0) return -1.0;
+
+    return blockerDepthSum / float(numBlockers);
 }
 
 float PCSS(sampler2D shadowMap, vec4 coords){
+    uniformDiskSamples(coords.xy);
 
-  // STEP 1: avgblocker depth
+    // STEP 1: avgblocker depth
+    float avgBlockerDepth = findBlocker(shadowMap, coords.xy, coords.z);
+    if (avgBlockerDepth == -1.0) return 1.0;
 
-  // STEP 2: penumbra size
+    // STEP 2: penumbra size
+    float penumbraSize = (coords.z - avgBlockerDepth) * LIGHT_UV / avgBlockerDepth;
 
-  // STEP 3: filtering
-  
-  return 1.0;
+    // STEP 3: filtering
+    float visibility = 0.0;
+    float currentDepth = coords.z;
 
+    float filterSize = penumbraSize;
+
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        vec2 offset = poissonDisk[i] * filterSize;
+        float closestDepth = unpack(texture2D(shadowMap, coords.xy + offset));
+        visibility += currentDepth > closestDepth + EPS ? 0.0 : 1.0;
+    }
+
+    return visibility / float(NUM_SAMPLES);
 }
 
 
@@ -141,9 +189,9 @@ void main(void) {
   shadowCoord = shadowCoord * 0.5 + 0.5;
 
   float visibility;
-  visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0));
+  //visibility = useShadowMap(uShadowMap, vec4(shadowCoord, 1.0));
   //visibility = PCF(uShadowMap, vec4(shadowCoord, 1.0));
-  //visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
+  visibility = PCSS(uShadowMap, vec4(shadowCoord, 1.0));
 
   vec3 phongColor = blinnPhong();
 
