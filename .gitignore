@@ -1,2 +1,4 @@
 /temp
 /.idea
+**/cmake-build-debug
+**/ext
