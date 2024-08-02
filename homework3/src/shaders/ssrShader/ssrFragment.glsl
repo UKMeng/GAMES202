@@ -122,8 +122,10 @@ vec3 GetGBufferDiffuse(vec2 uv) {
  *
  */
 vec3 EvalDiffuse(vec3 wi, vec3 wo, vec2 uv) {
-  vec3 L = vec3(0.0);
-  return L;
+    vec3 diffuse = GetGBufferDiffuse(uv);
+    vec3 normal = GetGBufferNormalWorld(uv);
+    float cosTheta = max(0.0, dot(wi, normal));
+    return diffuse * INV_PI * cosTheta ;
 }
 
 /*
@@ -132,21 +134,75 @@ vec3 EvalDiffuse(vec3 wi, vec3 wo, vec2 uv) {
  *
  */
 vec3 EvalDirectionalLight(vec2 uv) {
-  vec3 Le = vec3(0.0);
-  return Le;
+    vec3 Le = vec3(0.0);
+    float visibility = GetGBufferuShadow(uv);
+    Le = uLightRadiance * visibility;
+    return Le;
 }
 
 bool RayMarch(vec3 ori, vec3 dir, out vec3 hitPos) {
-  return false;
+    float step = 0.1;
+    vec3 stepDir = dir * step;
+    vec3 pos = ori;
+    for (int i = 0; i < 75; ++i) {
+        float depth = GetDepth(pos);
+        float gDepth = GetGBufferDepth(GetScreenCoordinate(pos));
+        if (depth > gDepth + 0.0001) {
+            hitPos = pos;
+            return true;
+        }
+        pos += stepDir;
+    }
+    return false;
+}
+
+vec3 EvalReflect(vec3 wi, vec3 wo, vec2 uv) {
+    vec3 normal = GetGBufferNormalWorld(uv);
+    vec3 reflectDir = normalize(reflect(-wo, normal));
+    vec3 hitPos;
+    if (RayMarch(vPosWorld.xyz, reflectDir, hitPos)) {
+        vec2 hitPosUV = GetScreenCoordinate(hitPos);
+        return GetGBufferDiffuse(hitPosUV);
+    }
+    return vec3(0);
 }
 
 #define SAMPLE_NUM 1
 
 void main() {
-  float s = InitRand(gl_FragCoord.xy);
+    float s = InitRand(gl_FragCoord.xy);
+    vec3 pos = vPosWorld.xyz;
+    vec3 wi = normalize(uLightDir);
+    vec3 wo = normalize(uCameraPos - pos);
+    vec2 uv = GetScreenCoordinate(pos);
+    vec3 n = GetGBufferNormalWorld(uv);
 
-  vec3 L = vec3(0.0);
-  L = GetGBufferDiffuse(GetScreenCoordinate(vPosWorld.xyz));
-  vec3 color = pow(clamp(L, vec3(0.0), vec3(1.0)), vec3(1.0 / 2.2));
-  gl_FragColor = vec4(vec3(color.rgb), 1.0);
+    // cal indirect diffuse
+//    vec3 Lindir = vec3(0.0);
+//    for (int i = 0; i < SAMPLE_NUM; ++i) {
+//        float pdf;
+//        vec3 localDir = SampleHemisphereUniform(s, pdf);
+//        vec3 b1, b2;
+//        LocalBasis(n, b1, b2);
+//        vec3 sampleDir = normalize(mat3(b1, b2, n) * localDir); // TBN Matrix transform local to world
+//        vec3 hitPos;
+//        if (RayMarch(pos, sampleDir, hitPos))
+//        {
+//            vec2 hitPosUV = GetScreenCoordinate(hitPos);
+//            vec3 hitPosWo = -sampleDir;
+//            vec3 hitPosWi = wi;
+//            Lindir += EvalDirectionalLight(hitPosUV) * EvalDiffuse(hitPosWi, hitPosWo, hitPosUV)
+//                        * EvalDiffuse(sampleDir, wo, uv) / pdf;
+//        }
+//    }
+//    Lindir /= float(SAMPLE_NUM);
+
+    vec3 L = vec3(0.0);
+//    L = EvalDirectionalLight(uv) * EvalDiffuse(wi, wo, uv) + Lindir;
+    //L = Lindir;
+
+    L = EvalReflect(wi, wo, uv);
+
+    vec3 color = pow(clamp(L, vec3(0.0), vec3(1.0)), vec3(1.0 / 2.2));
+    gl_FragColor = vec4(vec3(color.rgb), 1.0);
 }
