@@ -1,4 +1,4 @@
-#include <iostream>
+﻿#include <iostream>
 #include <vector>
 #include <algorithm>
 #include <cmath>
@@ -46,7 +46,7 @@ samplePoints squareToCosineHemisphere(int sample_count){
             double sampley = (p + rng(gen)) / sample_side;
             
             double theta = 0.5f * acos(1 - 2*samplex);
-            double phi =  2 * M_PI * sampley;
+            double phi =  2 * PI * sampley;
             Vec3f wi = Vec3f(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
             float pdf = wi.z / PI;
             
@@ -79,7 +79,7 @@ Vec3f IntegrateEmu(Vec3f V, float roughness, float NdotV, Vec3f Ei) {
         float NoV = std::max(dot(N, V), 0.0f);
 
         // TODO: To calculate Eavg here
-        
+        // ??
     }
 
     return Eavg / sample_count;
@@ -99,8 +99,8 @@ int main() {
         // | -----> mu(j)
         // | 
         // | rough（i）
-        // flip it if you want to write the data on picture 
-        uint8_t data[resolution * resolution * 3];
+        // flip it if you want to write the data on picture
+        uint8_t* data = new uint8_t[resolution * resolution * channel];
         float step = 1.0 / resolution;
         Vec3f Eavg = Vec3f(0.0);
 		for (int i = 0; i < resolution; i++) 
@@ -112,7 +112,7 @@ int main() {
                 Vec3f V = Vec3f(std::sqrt(1.f - NdotV * NdotV), 0.f, NdotV);
 
                 Vec3f Ei = getEmu((resolution - 1 - i), j, 0, Edata, NdotV, roughness);
-                Eavg += IntegrateEmu(V, roughness, NdotV, Ei) * step;
+                Eavg += Ei * NdotV * 2.0 * step;
                 setRGB(i, j, 0.0, data);
 			}
 
@@ -125,8 +125,9 @@ int main() {
 		}
 
 		stbi_flip_vertically_on_write(true);
-		stbi_write_png("GGX_Eavg_LUT.png", resolution, resolution, channel, data, 0);
-	}
+		stbi_write_png("GGX_Eavg_MC_LUT.png", resolution, resolution, channel, data, 0);
+	    delete[] data;
+    }
 	stbi_image_free(Edata);
     return 0;
 }

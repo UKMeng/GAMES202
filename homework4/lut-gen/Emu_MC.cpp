@@ -31,7 +31,7 @@ samplePoints squareToCosineHemisphere(int sample_count){
             double sampley = (p + rng(gen)) / sample_side;
             
             double theta = 0.5f * acos(1 - 2*samplex);
-            double phi =  2 * M_PI * sampley;
+            double phi =  2 * PI * sampley;
             Vec3f wi = Vec3f(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
             float pdf = wi.z / PI;
             
@@ -79,11 +79,28 @@ Vec3f IntegrateBRDF(Vec3f V, float roughness, float NdotV) {
     float C = 0.0;
     const int sample_count = 1024;
     Vec3f N = Vec3f(0.0, 0.0, 1.0);
-    
+
     samplePoints sampleList = squareToCosineHemisphere(sample_count);
     for (int i = 0; i < sample_count; i++) {
-      // TODO: To calculate (fr * ni) / p_o here
-      
+        // TODO: To calculate (fr * ni) / p_o here
+        Vec3f L = normalize(sampleList.directions[i]);
+        float pdf = sampleList.PDFs[i];
+
+        Vec3f H = normalize(L + V);
+        float NdotL = std::max(dot(N, L), 0.0f);
+
+        float D = DistributionGGX(N, H, roughness);
+        float G = GeometrySmith(roughness, NdotV, NdotL);
+        float F = 1.0;
+        float denominator = 4.0f * NdotV * NdotL;
+        float BRDF = D * G * F / denominator;
+
+        float mu = NdotL;
+        float res = BRDF * mu / pdf;
+
+        A += res;
+        B += res;
+        C += res;
     }
 
     return {A / sample_count, B / sample_count, C / sample_count};

@@ -27,23 +27,36 @@ Vec3f ImportanceSampleGGX(Vec2f Xi, Vec3f N, float roughness) {
     float a = roughness * roughness;
 
     //TODO: in spherical space - Bonus 1
-
+    float phi = 2.0 * PI * Xi.x;
+    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a * a - 1.0) * Xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
 
     //TODO: from spherical space to cartesian space - Bonus 1
- 
+    Vec3f H;
+    H.x = cos(phi) * sinTheta;
+    H.y = sin(phi) * sinTheta;
+    H.z = cosTheta;
 
     //TODO: tangent coordinates - Bonus 1
-
+    Vec3f up = Vec3f(1.0f, 0.0f, 0.0f);
+    Vec3f tangent = normalize(cross(N, up));
+    Vec3f bitangent = normalize(cross(N, tangent));
 
     //TODO: transform H to tangent space - Bonus 1
+    H = tangent * H.x + bitangent * H.y + N * H.z;
     
-    return Vec3f(1.0f);
+    return normalize(H);
 }
 
 float GeometrySchlickGGX(float NdotV, float roughness) {
     // TODO: To calculate Schlick G1 here - Bonus 1
-    
-    return 1.0f;
+    float a = roughness;
+    float k = (a * a) / 2.0f;
+
+    float nom = NdotV;
+    float denom = NdotV * (1.0f - k) + k;
+
+    return nom / denom;
 }
 
 float GeometrySmith(float roughness, float NoV, float NoL) {
@@ -57,6 +70,12 @@ Vec3f IntegrateBRDF(Vec3f V, float roughness) {
 
     const int sample_count = 1024;
     Vec3f N = Vec3f(0.0, 0.0, 1.0);
+
+    float totalWeight = 0.0f;
+
+    float A = 0.0f;
+    float B = 0.0f;
+
     for (int i = 0; i < sample_count; i++) {
         Vec2f Xi = Hammersley(i, sample_count);
         Vec3f H = ImportanceSampleGGX(Xi, N, roughness);
@@ -68,17 +87,22 @@ Vec3f IntegrateBRDF(Vec3f V, float roughness) {
         float NoV = std::max(dot(N, V), 0.0f);
         
         // TODO: To calculate (fr * ni) / p_o here - Bonus 1
-
-
+        float G = GeometrySmith(roughness, NoV, NoL);
+        float weight = G * VoH / (NoV * NoH);
+        totalWeight += weight;
         // Split Sum - Bonus 2
-        
+        float Fc = pow(1.0f - VoH, 5.0f);
+        A += (1.0f - Fc) * weight;
+        B += Fc * weight;
     }
-
-    return Vec3f(1.0f);
+    A /= sample_count;
+    B /= sample_count;
+    return Vec3f(totalWeight / sample_count, A, B);
 }
 
 int main() {
     uint8_t data[resolution * resolution * 3];
+    uint8_t brdf[resolution * resolution * 3];
     float step = 1.0 / resolution;
     for (int i = 0; i < resolution; i++) {
         for (int j = 0; j < resolution; j++) {
@@ -89,13 +113,19 @@ int main() {
             Vec3f irr = IntegrateBRDF(V, roughness);
 
             data[(i * resolution + j) * 3 + 0] = uint8_t(irr.x * 255.0);
-            data[(i * resolution + j) * 3 + 1] = uint8_t(irr.y * 255.0);
-            data[(i * resolution + j) * 3 + 2] = uint8_t(irr.z * 255.0);
+            data[(i * resolution + j) * 3 + 1] = uint8_t(irr.x * 255.0);
+            data[(i * resolution + j) * 3 + 2] = uint8_t(irr.x * 255.0);
+
+            brdf[(i * resolution + j) * 3 + 0] = uint8_t(irr.y * 255.0);
+            brdf[(i * resolution + j) * 3 + 1] = uint8_t(irr.z * 255.0);
+            brdf[(i * resolution + j) * 3 + 2] = 0;
         }
     }
     stbi_flip_vertically_on_write(true);
-    stbi_write_png("GGX_E_LUT.png", resolution, resolution, 3, data, resolution * 3);
-    
+    stbi_write_png("GGX_E_IS_LUT.png", resolution, resolution, 3, data, resolution * 3);
+
+    stbi_write_png("GGX_SPILT_SUM_LUT.png", resolution, resolution, 3, brdf, resolution * 3);
+
     std::cout << "Finished precomputed!" << std::endl;
     return 0;
 }

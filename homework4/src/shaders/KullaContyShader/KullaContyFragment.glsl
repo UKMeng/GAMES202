@@ -22,28 +22,47 @@ const float PI = 3.14159265359;
 
 float DistributionGGX(vec3 N, vec3 H, float roughness)
 {
-   // TODO: To calculate GGX NDF here
-    
+     // TODO: To calculate GGX NDF here
+     float a = roughness*roughness;
+     float a2 = a*a;
+     float NdotH = max(dot(N, H), 0.0);
+     float NdotH2 = NdotH*NdotH;
+
+     float nom   = a2;
+     float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+     denom = PI * denom * denom;
+
+     return nom / max(denom, 0.0001);
 }
 
 float GeometrySchlickGGX(float NdotV, float roughness)
 {
     // TODO: To calculate Schlick G1 here
-    
-    return 1.0;
+    float a = roughness;
+    float k = (a * a) / 2.0;
+
+    float nom = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+
+    return nom / denom;
 }
 
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 {
     // TODO: To calculate Smith G here
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
 
-    return 1.0;
+    return ggx1 * ggx2;
 }
 
 vec3 fresnelSchlick(vec3 F0, vec3 V, vec3 H)
 {
     // TODO: To calculate Schlick F here
-    return vec3(1.0);
+    float cosTheta = max(dot(V, H), 0.0);
+    return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
 
@@ -57,21 +76,21 @@ vec3 AverageFresnel(vec3 r, vec3 g)
 
 vec3 MultiScatterBRDF(float NdotL, float NdotV)
 {
-  vec3 albedo = pow(texture2D(uAlbedoMap, vTextureCoord).rgb, vec3(2.2));
+    vec3 albedo = pow(texture2D(uAlbedoMap, vTextureCoord).rgb, vec3(2.2));
 
-  vec3 E_o = texture2D(uBRDFLut, vec2(NdotL, uRoughness)).xyz;
-  vec3 E_i = texture2D(uBRDFLut, vec2(NdotV, uRoughness)).xyz;
+    vec3 E_o = texture2D(uBRDFLut, vec2(NdotL, uRoughness)).xyz;
+    vec3 E_i = texture2D(uBRDFLut, vec2(NdotV, uRoughness)).xyz;
 
-  vec3 E_avg = texture2D(uEavgLut, vec2(0, uRoughness)).xyz;
-  // copper
-  vec3 edgetint = vec3(0.827, 0.792, 0.678);
-  vec3 F_avg = AverageFresnel(albedo, edgetint);
-  
-  // TODO: To calculate fms and missing energy here
+    vec3 E_avg = texture2D(uEavgLut, vec2(0, uRoughness)).xyz;
+    // copper
+    vec3 edgetint = vec3(0.827, 0.792, 0.678);
+    vec3 F_avg = AverageFresnel(albedo, edgetint);
 
+    // TODO: To calculate fms and missing energy here
+    vec3 one = vec3(1.0);
+    vec3 F_ms = (one - E_o) * (one - E_i) / (PI * (one - E_avg));
 
-  return vec3(1.0);
-  
+    return F_ms * F_avg;
 }
 
 void main(void) {

@@ -77,7 +77,7 @@ Vec3f getEmu(int x, int y, int alpha, unsigned char *data, float NdotV, float ro
 }
 
 int main() {
-    unsigned char *Edata = stbi_load("./GGX_E_LUT.png", &resolution, &resolution, &channel, 3);
+    unsigned char *Edata = stbi_load("./GGX_E_IS_LUT.png", &resolution, &resolution, &channel, 3);
     if (Edata == NULL) 
     {
 		std::cout << "ERROE_FILE_NOT_LOAD" << std::endl;
@@ -90,7 +90,7 @@ int main() {
         // | 
         // | rough（i）
         // Flip it, if you want the data written to the texture
-        uint8_t data[resolution * resolution * 3];
+        uint8_t* data = new uint8_t[resolution * resolution * channel];
         float step = 1.0 / resolution;
         Vec3f Eavg = Vec3f(0.0);
 		for (int i = 0; i < resolution; i++) 
@@ -102,7 +102,8 @@ int main() {
                 Vec3f V = Vec3f(std::sqrt(1.f - NdotV * NdotV), 0.f, NdotV);
 
                 Vec3f Ei = getEmu((resolution - 1 - i), j, 0, Edata, NdotV, roughness);
-                Eavg += IntegrateEmu(V, roughness, NdotV, Ei) * step;
+                //Eavg += IntegrateEmu(V, roughness, NdotV, Ei) * step;
+                Eavg += Ei * NdotV * 2.0 * step;
                 setRGB(i, j, 0.0, data);
 			}
 
@@ -114,8 +115,9 @@ int main() {
             Eavg = Vec3f(0.0);
 		}
 		stbi_flip_vertically_on_write(true);
-		stbi_write_png("GGX_Eavg_LUT.png", resolution, resolution, channel, data, 0);
-	}
+		stbi_write_png("GGX_Eavg_IS_LUT.png", resolution, resolution, channel, data, 0);
+        delete[] data;
+    }
 	stbi_image_free(Edata);
     return 0;
 }
