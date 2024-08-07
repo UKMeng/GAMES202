@@ -18,6 +18,8 @@ class Float3 {
     Float3(const float &_x, const float &_y, const float &_z) : x(_x), y(_y), z(_z) {}
     Float3 operator+(const Float3 &v) const { return Float3(x + v.x, y + v.y, z + v.z); }
     Float3 operator-(const Float3 &v) const { return Float3(x - v.x, y - v.y, z - v.z); }
+    bool operator==(const Float3 &v) const { return x == v.x && y == v.y && z == v.z; }
+    bool operator!=(const Float3 &v) const { return x != v.x || y != v.y || z != v.z; }
     Float3 &operator+=(const Float3 &v) {
         x += v.x;
         y += v.y;
