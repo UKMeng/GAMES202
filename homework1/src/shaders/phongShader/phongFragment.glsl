@@ -15,7 +15,7 @@ varying highp vec3 vFragPos;
 varying highp vec3 vNormal;
 
 // Shadow map related variables
-#define NUM_SAMPLES 50
+#define NUM_SAMPLES 10
 #define BLOCKER_SEARCH_NUM_SAMPLES NUM_SAMPLES
 #define PCF_NUM_SAMPLES NUM_SAMPLES
 #define NUM_RINGS 10
@@ -83,72 +83,74 @@ void uniformDiskSamples( const in vec2 randomSeed ) {
   }
 }
 
-float PCF(sampler2D shadowMap, vec4 coords) {
-    //uniformDiskSamples(coords.xy);
-    poissonDiskSamples(coords.xy);
-    float visibility = 0.0;
-    float currentDepth = coords.z;
+// PCSS https://developer.download.nvidia.cn/whitepapers/2008/PCSS_Integration.pdf
+#define LIGHT_FRUSTUM_WIDTH 15.0
+#define LIGHT_WORLD_SIZE 0.1
+#define LIGHT_UV (LIGHT_WORLD_SIZE / LIGHT_FRUSTUM_WIDTH)
 
-    float filterSize = 10.0 / 2048.0;
-
-    for (int i = 0; i < NUM_SAMPLES; i++) {
-        vec2 offset = poissonDisk[i] * filterSize;
-        float closestDepth = unpack(texture2D(shadowMap, coords.xy + offset));
-        visibility += currentDepth > closestDepth + EPS ? 0.0 : 1.0;
-    }
-
-    return visibility / float(NUM_SAMPLES);
-}
-
-// transform light from world size to sm size
-// reference: https://github.com/DrFlower/GAMES_101_202_Homework/tree/main/Homework_202/Assignment1
-#define FRUSTUM_SIZE 128.0
-#define LIGHT_WORLD_SIZE 10.0
-#define LIGHT_UV LIGHT_WORLD_SIZE / FRUSTUM_SIZE
+#define RESOLUTION 2048.0
+#define NEAR_PLANE 1.0
 
 float findBlocker( sampler2D shadowMap, vec2 uv, float zReceiver ) {
-    float filterSize = 10.0 / 2048.0;
+    //This uses similar triangles to compute what
+    //area of the shadow map we should search
+    float searchRadius = LIGHT_UV * (zReceiver - NEAR_PLANE) / zReceiver;
     float blockerDepthSum = 0.0;
     float numBlockers = 0.0;
 
-    for (int i = 0; i < NUM_SAMPLES; i++)
-    {
-        vec2 offset = poissonDisk[i] * filterSize;
-        float closestDepth = unpack(texture2D(shadowMap, uv + offset));
-        if (closestDepth < zReceiver) {
-            blockerDepthSum += closestDepth;
+    for (int i = 0; i < BLOCKER_SEARCH_NUM_SAMPLES; i++) {
+        float shadowMapdepth = unpack(texture2D(shadowMap, uv + poissonDisk[i] * searchRadius));
+        if (shadowMapdepth < zReceiver) {
+            blockerDepthSum += shadowMapdepth;
             numBlockers += 1.0;
         }
     }
 
     if (numBlockers == 0.0) return -1.0;
 
-    return blockerDepthSum / float(numBlockers);
+    return blockerDepthSum / numBlockers;
+}
+
+float PCF_Filter(sampler2D shadowMap, vec2 uv, float zReciver, float filterRadius) {
+    float sum = 0.0;
+
+    for (int i = 0; i < PCF_NUM_SAMPLES; i++) {
+        float depth = unpack(texture2D(shadowMap, uv + poissonDisk[i] * filterRadius));
+        if (zReciver <= depth) sum += 1.0;
+    }
+
+    for (int i = 0; i < PCF_NUM_SAMPLES; i++) {
+        float depth = unpack(texture2D(shadowMap, uv - poissonDisk[i].yx * filterRadius));
+        if (zReciver <= depth) sum += 1.0;
+    }
+
+    return sum / (2.0 * float(PCF_NUM_SAMPLES));
+}
+
+
+float PCF(sampler2D shadowMap, vec4 coords) {
+    vec2 uv = coords.xy;
+    float zReceiver = coords.z;
+
+    poissonDiskSamples(uv);
+    return PCF_Filter(shadowMap, uv, zReceiver, 0.002);
 }
 
 float PCSS(sampler2D shadowMap, vec4 coords){
-    uniformDiskSamples(coords.xy);
+    vec2 uv = coords.xy;
+    float zReceiver = coords.z;
+    uniformDiskSamples(uv);
 
     // STEP 1: avgblocker depth
-    float avgBlockerDepth = findBlocker(shadowMap, coords.xy, coords.z);
+    float avgBlockerDepth = findBlocker(shadowMap, uv, zReceiver);
     if (avgBlockerDepth == -1.0) return 1.0;
 
     // STEP 2: penumbra size
-    float penumbraSize = (coords.z - avgBlockerDepth) * LIGHT_UV / avgBlockerDepth;
+    float penumbraRatio = (zReceiver - avgBlockerDepth) / avgBlockerDepth;
+    float filterSize = penumbraRatio * LIGHT_UV * NEAR_PLANE / zReceiver;
 
     // STEP 3: filtering
-    float visibility = 0.0;
-    float currentDepth = coords.z;
-
-    float filterSize = penumbraSize;
-
-    for (int i = 0; i < NUM_SAMPLES; i++) {
-        vec2 offset = poissonDisk[i] * filterSize;
-        float closestDepth = unpack(texture2D(shadowMap, coords.xy + offset));
-        visibility += currentDepth > closestDepth + EPS ? 0.0 : 1.0;
-    }
-
-    return visibility / float(NUM_SAMPLES);
+    return PCF_Filter(shadowMap, uv, zReceiver, filterSize);
 }
 
 
